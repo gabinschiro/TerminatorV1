@@ -13,8 +13,9 @@ const MINECRAFT_LOGIN_URL: &str =
     "https://api.minecraftservices.com/authentication/login_with_xbox";
 const PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
 
-// Fallback compilé : remplacé par la variable d'environnement au lancement.
-const MSA_CLIENT_ID: &str = "";
+// Client ID communautaire documenté (usage dev/test uniquement, révocable).
+// Pour la prod, définir TERMINATOR_MS_CLIENT_ID avec sa propre app Azure (docs/azure-setup.md).
+const MSA_CLIENT_ID: &str = "2305bcc4-e212-4bf4-8476-a135286ea9f6";
 
 const SCOPE: &str = "XboxLive.signin offline_access";
 const XBL_RP: &str = "http://auth.xboxlive.com";
@@ -474,9 +475,16 @@ mod tests {
     }
 
     #[test]
-    fn default_client_id_is_empty_without_env() {
-        // S'assure que la config par défaut force le message d'erreur explicite.
+    fn client_id_falls_back_to_community_id_without_env() {
         std::env::remove_var("TERMINATOR_MS_CLIENT_ID");
-        assert_eq!(msa_client_id(), "");
+        assert_eq!(msa_client_id(), MSA_CLIENT_ID);
+        assert!(!msa_client_id().is_empty());
+    }
+
+    #[test]
+    fn env_var_overrides_fallback() {
+        std::env::set_var("TERMINATOR_MS_CLIENT_ID", "custom-id");
+        assert_eq!(msa_client_id(), "custom-id");
+        std::env::remove_var("TERMINATOR_MS_CLIENT_ID");
     }
 }

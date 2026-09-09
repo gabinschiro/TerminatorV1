@@ -46,21 +46,26 @@ launcher (étape 4).
 
 ## 4. Configurer le client_id dans TerminatorV1
 
-Le launcher lit le client_id via la variable d'environnement suivante
-(fallback sur une constante compilée) :
+Par défaut, le launcher embarque un **client_id communautaire documenté**
+(usage dev/test). Il fonctionne sans configuration :
+
+```bash
+npm run tauri dev
+```
+
+Pour utiliser **ta propre app Azure** (obligatoire en production), défini
+l'environnement avant de lancer :
 
 ```bash
 export TERMINATOR_MS_CLIENT_ID="<ton-application-client-id>"
+npm run tauri dev
 ```
-
-Puis lancer `npm run tauri dev` depuis le même terminal.
 
 ### Où le code le lit
 `launcher/src-tauri/src/commands/msauth.rs` → `msa_client_id()` :
-`TERMINATOR_MS_CLIENT_ID` si définie, sinon `MSA_CLIENT_ID` (constante compilée).
-Pour un usage durable, mets ta vraie valeur dans `MSA_CLIENT_ID` — mais ne commit
-jamais un secret ; un client_id public n'est pas un secret, mais reste propre à ton
-app. Préfère l'env var.
+`TERMINATOR_MS_CLIENT_ID` si définie, sinon `MSA_CLIENT_ID` (constante compilée =
+client_id communautaire de dev). Le client_id public n'est pas un secret, mais en
+prod utilise le tien via l'env var.
 
 ---
 
