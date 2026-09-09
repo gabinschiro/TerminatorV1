@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "terminator",
+  "version": "${version}",
+  "name": "TerminatorV1",
+  "description": "Client Minecraft moderne, équivalent Lunar/Badlion en mieux.",
+  "authors": ["TerminatorV1"],
+  "license": "MIT",
+  "icon": "assets/terminator/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "net.terminator.TerminatorClient"
+    ]
+  },
+  "mixins": [
+    "terminator.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "fabric-api": "*",
+    "minecraft": "~1.21.4",
+    "java": ">=21",
+    "fabric-language-kotlin": ">=1.13.0"
+  }
+}
