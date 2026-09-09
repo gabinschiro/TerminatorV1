@@ -29,8 +29,9 @@ pub fn get_system_info() -> SystemInfo {
     SystemInfo {
         os_name: System::name().unwrap_or_default(),
         os_version: System::os_version().unwrap_or_default(),
-        total_memory_gb: sys.total_memory() / 1024,
-        used_memory_gb: sys.used_memory() / 1024,
+        // total_memory() renvoie des octets.
+        total_memory_gb: sys.total_memory() / (1024 * 1024 * 1024),
+        used_memory_gb: sys.used_memory() / (1024 * 1024 * 1024),
         cpu_name: cpu,
         cpu_cores: sys.cpus().len(),
         disk_free_gb: disk_free,
