@@ -56,8 +56,8 @@ export function launchGame(request: LaunchRequest): Promise<LaunchResponse> {
   return invoke<LaunchResponse>("launch_game", { request });
 }
 
-export function downloadAssets(): Promise<DownloadProgress> {
-  return invoke<DownloadProgress>("download_assets");
+export function downloadAssets(version: string): Promise<DownloadProgress> {
+  return invoke<DownloadProgress>("install_client", { version });
 }
 
 export function getAuthState(): Promise<Account> {

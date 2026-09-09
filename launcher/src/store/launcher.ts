@@ -149,7 +149,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
         }
       });
 
-      await downloadAssets();
+      await downloadAssets(get().version);
       set({ active: false, progress: null });
 
       set({ launching: true });

@@ -188,9 +188,9 @@ client/
 - [x] Install client (bootstrap) depuis CDN
 - [x] Mise à jour client (tauri updater)
 
-> Notes : bootstrap via manifest CDN (`cdn/latest.json`) + téléchargement parallèle + sha256.
-> `launch_game` lit la session côté backend et injecte `--terminator-*` au client, qui applique la
-> session via mixin. Updater câblé avec endpoints placeholder (pubkey à renseigner).
+> Notes : l'installeur assemble le vrai client — Minecraft (jar + libs + natives + assets) depuis
+> les APIs Mojang, Fabric Loader + API depuis fabric-meta/maven, puis place notre mod dans mods/.
+> Lancement via KnotClient avec classpath complet et session injectée. Updater câblé en placeholder.
 
 ### Phase 4 — Modules avancés
 - [ ] PvP pack (aim, hitboxes, aura) [VERSION LEGALE : à discuter]
