@@ -176,10 +176,12 @@ client/
 - [ ] EventBus tick/render fonctionnel
 
 ### Phase 2 — Launcher
-- [ ] Tauri v2 + React + Tailwind scaffold
-- [ ] Commands Rust : sysinfo, download, launch, auth
-- [ ] UI "hero" home + sidebar + settings
-- [ ] Streaming download + progress live
+- [x] Tauri v2 + React + Tailwind scaffold
+- [x] Commands Rust : sysinfo, download, launch, auth
+- [x] UI "hero" home + sidebar + settings
+- [x] Streaming download + progress live
+
+> TODO (hors phase) : l'auth est un squelette — implémenter le vrai OAuth Microsoft device-flow (compte, UUID, token, refresh) en Phase 4/5.
 
 ### Phase 3 — Intégration
 - [ ] Launcher → lance le client with args
