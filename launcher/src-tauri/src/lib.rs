@@ -17,7 +17,8 @@ pub fn run() {
             commands::msauth::begin_ms_login,
             commands::msauth::complete_ms_login,
             commands::msauth::refresh_ms_login,
-            commands::skin::get_player_skin
+            commands::skin::get_player_skin,
+            commands::install::install_client
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
