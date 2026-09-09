@@ -1,21 +1,48 @@
 use serde::Serialize;
+use std::time::Duration;
+use tauri::{AppHandle, Emitter};
 
-#[derive(Serialize)]
+const PROGRESS_EVENT: &str = "download://progress";
+
+#[derive(Serialize, Clone)]
 pub struct DownloadProgress {
+    pub version: String,
     pub downloaded_mb: u64,
     pub total_mb: u64,
     pub percent: u8,
+    pub done: bool,
 }
 
 #[tauri::command]
-pub fn download_assets(version: String) -> Result<DownloadProgress, String> {
-    // Phase 3 : téléchargement parallèle depuis le CDN.
-    // Le squelette expose le contrat de progression consommé par le frontend.
-    let _ = version;
+pub async fn download_assets(app: AppHandle, version: String) -> Result<DownloadProgress, String> {
+    // Phase 2 : progression simulée pour valider le streaming d'événements.
+    // Phase 3 : remplacé par un vrai téléchargement parallèle depuis le CDN.
+    let total_mb: u64 = 250;
+    let steps = 50u32;
+
+    for step in 0..=steps {
+        let downloaded_mb = total_mb * step as u64 / steps as u64;
+        let percent = (step as f32 / steps as f32 * 100.0).round() as u8;
+
+        let progress = DownloadProgress {
+            version: version.clone(),
+            downloaded_mb,
+            total_mb,
+            percent,
+            done: step == steps,
+        };
+        let _ = app.emit(PROGRESS_EVENT, progress.clone());
+
+        // Laisse le frontend recevoir chaque événement sans saturer le bus.
+        tokio::time::sleep(Duration::from_millis(30)).await;
+    }
+
     Ok(DownloadProgress {
-        downloaded_mb: 0,
-        total_mb: 0,
-        percent: 0,
+        version,
+        downloaded_mb: total_mb,
+        total_mb,
+        percent: 100,
+        done: true,
     })
 }
 
@@ -24,8 +51,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn download_progress_reports_zero_initially() {
-        let progress = download_assets("1.21.4".to_string()).unwrap();
-        assert_eq!(progress.percent, 0);
+    fn progress_reaches_done_at_100_percent() {
+        let progress = DownloadProgress {
+            version: "1.21.4".into(),
+            downloaded_mb: 250,
+            total_mb: 250,
+            percent: 100,
+            done: true,
+        };
+        assert_eq!(progress.percent, 100);
+        assert!(progress.done);
     }
 }
