@@ -53,6 +53,7 @@ struct PollError {
 
 #[derive(Deserialize)]
 struct XblResponse {
+    #[serde(rename = "Token")]
     token: String,
     #[serde(rename = "DisplayClaims")]
     display_claims: XuiClaims,
@@ -472,6 +473,19 @@ mod tests {
         assert!(xsts_error_message("2148916233").is_some());
         assert!(xsts_error_message("2148916238").is_some());
         assert!(xsts_error_message("9999999999").is_none());
+    }
+
+    #[test]
+    fn xbl_response_parses_real_shape() {
+        // Structure réelle de user.auth.xboxlive.com : champ "Token" en majuscule.
+        let json = r#"{
+            "IssueInstant": "2026-01-01T00:00:00Z",
+            "Token": "eyJxbl-token",
+            "DisplayClaims": { "xui": [ { "uhs": "user-hash", "xid": "253546" } ] }
+        }"#;
+        let parsed: XblResponse = serde_json::from_str(json).expect("should parse");
+        assert_eq!(parsed.token, "eyJxbl-token");
+        assert_eq!(parsed.display_claims.xui[0].uhs, "user-hash");
     }
 
     #[test]
