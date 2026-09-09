@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLauncherStore } from "@/store/launcher";
 import { HomeView } from "@/components/HomeView";
 import { SettingsView } from "@/components/SettingsView";
+import { Avatar } from "@/components/ui/Avatar";
 
 type View = "home" | "settings";
 
@@ -12,7 +13,7 @@ const NAV: { id: View; label: string }[] = [
 
 export default function App() {
   const [view, setView] = useState<View>("home");
-  const { account, refreshAccount } = useLauncherStore();
+  const { account, skinUrl, refreshAccount } = useLauncherStore();
 
   useEffect(() => {
     refreshAccount();
@@ -47,16 +48,21 @@ export default function App() {
           </button>
         ))}
 
-        <div className="mt-auto rounded-xl bg-surface px-3 py-3">
-          <p className="text-sm font-medium">{account?.username ?? "Non connecté"}</p>
-          {!account && (
-            <button
-              onClick={() => setView("settings")}
-              className="mt-1 text-xs text-accent-soft hover:underline"
-            >
-              Se connecter
-            </button>
-          )}
+        <div className="mt-auto flex items-center gap-3 rounded-xl bg-surface px-3 py-3">
+          {skinUrl && <Avatar skinUrl={skinUrl} size={36} />}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">
+              {account?.username ?? "Non connecté"}
+            </p>
+            {!account && (
+              <button
+                onClick={() => setView("settings")}
+                className="mt-0.5 text-xs text-accent-soft hover:underline"
+              >
+                Se connecter
+              </button>
+            )}
+          </div>
         </div>
       </nav>
 
