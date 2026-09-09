@@ -12,8 +12,9 @@ pub fn run() {
             commands::launch::launch_game,
             commands::download::download_assets,
             commands::auth::get_auth_state,
-            commands::auth::login_microsoft,
-            commands::auth::logout
+            commands::auth::logout,
+            commands::msauth::begin_ms_login,
+            commands::msauth::complete_ms_login
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
