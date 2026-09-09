@@ -45,6 +45,7 @@ struct ManifestEntry {
 
 #[derive(Deserialize)]
 struct VersionJson {
+    #[serde(rename = "assetIndex")]
     asset_index: AssetIndex,
     downloads: VersionDownloads,
     libraries: Vec<Library>,
@@ -71,13 +72,11 @@ struct Library {
     name: String,
     downloads: Option<LibraryDownloads>,
     rules: Option<Vec<Rule>>,
-    natives: Option<HashMap<String, String>>,
 }
 
 #[derive(Deserialize)]
 struct LibraryDownloads {
     artifact: Option<Artifact>,
-    classifiers: Option<HashMap<String, Artifact>>,
 }
 
 #[derive(Deserialize)]
@@ -96,6 +95,7 @@ struct OsRule {
 
 #[derive(Deserialize)]
 struct FabricLoaderEntry {
+    #[serde(rename = "launcherMeta")]
     launcher_meta: LauncherMeta,
 }
 
@@ -187,16 +187,25 @@ fn rules_allow(rules: &[Rule]) -> bool {
     }
 }
 
-// Convertit "net.fabricmc:fabric-loader:0.19.5" en chemin maven relatif.
+// Convertit "net.fabricmc:fabric-loader:0.19.5" ou
+// "org.lwjgl:lwjgl-glfw:3.3.3:natives-linux" en chemin maven relatif.
 fn maven_path(name: &str) -> PathBuf {
     let parts: Vec<&str> = name.split(':').collect();
     let group = parts.first().copied().unwrap_or("");
     let artifact = parts.get(1).copied().unwrap_or("");
     let version = parts.get(2).copied().unwrap_or("");
+    let classifier = parts.get(3).copied();
     let group_path = group.replace('.', "/");
-    PathBuf::from(format!(
-        "{group_path}/{artifact}/{version}/{artifact}-{version}.jar"
-    ))
+    let file = match classifier {
+        Some(c) => format!("{artifact}-{version}-{c}.jar"),
+        None => format!("{artifact}-{version}.jar"),
+    };
+    PathBuf::from(format!("{group_path}/{artifact}/{version}/{file}"))
+}
+
+// En 1.21.4 les natives sont des entrées maven nommées "<artifact>:natives-<os>".
+fn is_native_for_current_os(name: &str) -> bool {
+    name.ends_with(&format!(":natives-{}", current_os()))
 }
 
 fn library_local_path(lib_name: &str) -> PathBuf {
@@ -359,37 +368,26 @@ pub async fn install_client(app: AppHandle, version: String) -> Result<DownloadP
     progress += STAGE_CLIENT_JAR * 100.0;
     emit_progress(&app, &version, progress);
 
-    // 4. Libraries vanilla (filtrées par règles OS) + natives fabric (maven).
+    // 4. Libraries vanilla : natives (entrées ":natives-<os>") extraites, le reste au classpath.
     let mut libs = Vec::new();
     for lib in &version_json.libraries {
         let rules = lib.rules.as_deref().unwrap_or(&[]);
         if !rules_allow(rules) {
             continue;
         }
-        if let Some(classifier) = lib.natives.as_ref().and_then(|n| n.get(current_os())) {
-            let artifact = lib
-                .downloads
-                .as_ref()
-                .and_then(|d| d.classifiers.as_ref())
-                .and_then(|c| c.get(classifier))
-                .ok_or_else(|| format!("Natives manquantes pour {}", lib.name))?;
-            let archive =
-                natives_dir.join(maven_path(&lib.name).file_name().unwrap_or_default());
-            if !archive.exists() {
-                download_file(&client, &artifact.url, &archive).await?;
-            }
+        let artifact = lib
+            .downloads
+            .as_ref()
+            .and_then(|d| d.artifact.as_ref())
+            .ok_or_else(|| format!("Artifact manquant pour {}", lib.name))?;
+        let dest = library_local_path(&lib.name);
+        if !dest.exists() {
+            download_file(&client, &artifact.url, &dest).await?;
+        }
+        if is_native_for_current_os(&lib.name) {
             // Les natives sont livrées en zip : extraction dans natives/ (cf. dossier lancé).
-            extract_zip(&archive, &natives_dir).await?;
+            extract_zip(&dest, &natives_dir).await?;
         } else {
-            let artifact = lib
-                .downloads
-                .as_ref()
-                .and_then(|d| d.artifact.as_ref())
-                .ok_or_else(|| format!("Artifact manquant pour {}", lib.name))?;
-            let dest = library_local_path(&lib.name);
-            if !dest.exists() {
-                download_file(&client, &artifact.url, &dest).await?;
-            }
             libs.push(dest);
         }
     }
