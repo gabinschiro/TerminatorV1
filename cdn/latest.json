@@ -1,7 +1,7 @@
 {
   "version": "0.1.0",
   "client": {
-    "url": "https://github.com/gabinschiro/TerminatorV1/releases/download/v0.1.0/terminator-client.jar",
-    "sha256": ""
+    "url": "https://github.com/gabinschiro/TerminatorV1/releases/download/v0.1.0/terminator-client-0.1.0.jar",
+    "sha256": "9b70ca6787d3bce1b48cd40d136dc373f6d2801518d31798521e3006925a0a87"
   }
 }
