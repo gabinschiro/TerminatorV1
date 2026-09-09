@@ -12,7 +12,6 @@ export interface SystemInfo {
 }
 
 export interface LaunchRequest {
-  java_path: string;
   version: string;
   ram_mb: number;
 }
@@ -57,8 +56,8 @@ export function launchGame(request: LaunchRequest): Promise<LaunchResponse> {
   return invoke<LaunchResponse>("launch_game", { request });
 }
 
-export function downloadAssets(version: string): Promise<DownloadProgress> {
-  return invoke<DownloadProgress>("download_assets", { version });
+export function downloadAssets(): Promise<DownloadProgress> {
+  return invoke<DownloadProgress>("download_assets");
 }
 
 export function getAuthState(): Promise<Account> {

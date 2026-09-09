@@ -184,9 +184,13 @@ client/
 > TODO (hors phase) : l'auth est un squelette — implémenter le vrai OAuth Microsoft device-flow (compte, UUID, token, refresh) en Phase 4/5.
 
 ### Phase 3 — Intégration
-- [ ] Launcher → lance le client with args
-- [ ] Install client (bootstrap) depuis CDN
-- [ ] Mise à jour client (tauri updater)
+- [x] Launcher → lance le client with args
+- [x] Install client (bootstrap) depuis CDN
+- [x] Mise à jour client (tauri updater)
+
+> Notes : bootstrap via manifest CDN (`cdn/latest.json`) + téléchargement parallèle + sha256.
+> `launch_game` lit la session côté backend et injecte `--terminator-*` au client, qui applique la
+> session via mixin. Updater câblé avec endpoints placeholder (pubkey à renseigner).
 
 ### Phase 4 — Modules avancés
 - [ ] PvP pack (aim, hitboxes, aura) [VERSION LEGALE : à discuter]

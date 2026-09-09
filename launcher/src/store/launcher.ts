@@ -7,11 +7,13 @@ import {
   completeMsLogin,
   logout as tauriLogout,
   downloadAssets,
+  launchGame,
   onDownloadProgress,
   type SystemInfo,
   type Account,
   type DeviceCodeInfo,
   type DownloadProgress,
+  type LaunchResponse,
 } from "@/lib/tauri";
 
 interface DownloadState {
@@ -27,6 +29,8 @@ interface LauncherState extends DownloadState {
   ramMb: number;
   account: Account | null;
   skinUrl: string | null;
+  launchError: string | null;
+  launching: boolean;
   loadingSystem: boolean;
   msStatus: MsLoginStatus;
   msDevice: DeviceCodeInfo | null;
@@ -38,7 +42,7 @@ interface LauncherState extends DownloadState {
   completeMsLogin: () => Promise<void>;
   cancelMsLogin: () => void;
   logout: () => Promise<void>;
-  startDownload: () => Promise<void>;
+  installAndPlay: () => Promise<void>;
   setVersion: (version: string) => void;
   setRam: (ramMb: number) => void;
 }
@@ -49,6 +53,8 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
   ramMb: 4096,
   account: null,
   skinUrl: null,
+  launchError: null,
+  launching: false,
   loadingSystem: false,
   msStatus: "idle",
   msDevice: null,
@@ -118,19 +124,35 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
     set({ account: null, skinUrl: null });
   },
 
-  startDownload: async () => {
-    if (get().active) return;
-    set({ active: true, progress: null });
+  installAndPlay: async () => {
+    if (get().active || get().launching) return;
+    set({ launchError: null });
+    try {
+      set({ active: true, progress: null });
 
-    const unlisten = await onDownloadProgress((progress) => {
-      set({ progress });
-      if (progress.done) {
-        set({ active: false });
-        unlisten();
+      const unlisten = await onDownloadProgress((progress) => {
+        set({ progress });
+        if (progress.done) {
+          set({ active: false });
+          unlisten();
+        }
+      });
+
+      await downloadAssets();
+      set({ active: false, progress: null });
+
+      set({ launching: true });
+      const response: LaunchResponse = await launchGame({
+        version: get().version,
+        ram_mb: get().ramMb,
+      });
+      set({ launching: false });
+      if (response.error) {
+        set({ launchError: response.error });
       }
-    });
-
-    await downloadAssets(get().version);
+    } catch (error) {
+      set({ active: false, launching: false, launchError: String(error) });
+    }
   },
 
   setVersion: (version) => set({ version }),

@@ -45,7 +45,7 @@ export function Avatar({ skinUrl, size = 48, className = "" }: AvatarProps) {
       ref={canvasRef}
       width={size}
       height={size}
-      className={`border border-border ${className}`}
+      className={`rounded-lg border border-border ${className}`}
       aria-label="Tête du skin"
     />
   );

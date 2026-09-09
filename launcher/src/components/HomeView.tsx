@@ -11,13 +11,17 @@ export function HomeView() {
     version,
     ramMb,
     active,
+    launching,
     progress,
-    startDownload,
+    launchError,
+    installAndPlay,
   } = useLauncherStore();
 
   useEffect(() => {
     refreshSystem();
   }, [refreshSystem]);
+
+  const busy = active || launching;
 
   return (
     <div className="relative flex h-full flex-col justify-center">
@@ -36,13 +40,19 @@ export function HomeView() {
 
         <div className="mt-8 flex items-center gap-4">
           <motion.button
-            whileHover={{ scale: active ? 1 : 1.03 }}
-            whileTap={{ scale: active ? 1 : 0.97 }}
-            onClick={startDownload}
-            disabled={active}
+            whileHover={{ scale: busy ? 1 : 1.03 }}
+            whileTap={{ scale: busy ? 1 : 0.97 }}
+            onClick={installAndPlay}
+            disabled={busy}
             className="rounded-2xl bg-accent px-8 py-3 text-base font-semibold text-white shadow-lg shadow-accent/40 disabled:opacity-60"
           >
-            {active ? "Téléchargement..." : account ? "Jouer" : "Télécharger"}
+            {active
+              ? "Installation..."
+              : launching
+                ? "Lancement..."
+                : account
+                  ? "Jouer"
+                  : "Installer"}
           </motion.button>
 
           <div className="flex flex-col gap-1">
@@ -52,6 +62,10 @@ export function HomeView() {
             <span className="text-sm font-medium">{ramMb} Mo</span>
           </div>
         </div>
+
+        {launchError && (
+          <p className="mt-4 max-w-md text-sm text-red-400">{launchError}</p>
+        )}
 
         {active && progress && <DownloadBar progress={progress} />}
       </motion.div>
