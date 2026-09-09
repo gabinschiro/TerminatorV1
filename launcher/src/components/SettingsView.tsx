@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useLauncherStore } from "@/store/launcher";
 import { GlassPanel } from "@/components/ui/GlassPanel";
+import { Avatar } from "@/components/ui/Avatar";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 const RAM_OPTIONS = [2048, 3072, 4096, 6144, 8192, 12288] as const;
@@ -65,7 +66,11 @@ export function SettingsView() {
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-text-muted">
           Compte
         </h2>
-        {account ? <AccountPanel account={account} onLogout={logout} /> : <LoginPanel />}
+        {account ? (
+          <AccountPanel account={account} onLogout={logout} />
+        ) : (
+          <LoginPanel />
+        )}
       </GlassPanel>
     </motion.div>
   );
@@ -78,11 +83,13 @@ function AccountPanel({
   account: { username: string; uuid: string };
   onLogout: () => Promise<void>;
 }) {
+  const skinUrl = useLauncherStore((s) => s.skinUrl);
   return (
-    <div className="flex items-center justify-between">
-      <div>
+    <div className="flex items-center gap-4">
+      {skinUrl && <Avatar skinUrl={skinUrl} size={56} />}
+      <div className="min-w-0 flex-1">
         <p className="font-medium">{account.username}</p>
-        <p className="text-xs text-text-muted">{account.uuid}</p>
+        <p className="truncate text-xs text-text-muted">{account.uuid}</p>
       </div>
       <button
         onClick={onLogout}

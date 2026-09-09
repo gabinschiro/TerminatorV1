@@ -27,6 +27,10 @@ export interface Account {
   uuid: string;
 }
 
+export interface PlayerSkin {
+  url: string;
+}
+
 export interface DeviceCodeInfo {
   device_code: string;
   user_code: string;
@@ -59,6 +63,10 @@ export function downloadAssets(version: string): Promise<DownloadProgress> {
 
 export function getAuthState(): Promise<Account> {
   return invoke<Account>("get_auth_state");
+}
+
+export function getPlayerSkin(uuid: string): Promise<PlayerSkin> {
+  return invoke<PlayerSkin>("get_player_skin", { uuid });
 }
 
 export function beginMsLogin(): Promise<DeviceCodeInfo> {

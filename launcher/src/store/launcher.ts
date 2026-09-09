@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {
   getSystemInfo,
   getAuthState,
+  getPlayerSkin,
   beginMsLogin,
   completeMsLogin,
   logout as tauriLogout,
@@ -25,12 +26,14 @@ interface LauncherState extends DownloadState {
   version: string;
   ramMb: number;
   account: Account | null;
+  skinUrl: string | null;
   loadingSystem: boolean;
   msStatus: MsLoginStatus;
   msDevice: DeviceCodeInfo | null;
   msError: string | null;
   refreshSystem: () => Promise<void>;
   refreshAccount: () => Promise<void>;
+  refreshSkin: () => Promise<void>;
   beginMsLogin: () => Promise<void>;
   completeMsLogin: () => Promise<void>;
   cancelMsLogin: () => void;
@@ -45,6 +48,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
   version: "1.21.4",
   ramMb: 4096,
   account: null,
+  skinUrl: null,
   loadingSystem: false,
   msStatus: "idle",
   msDevice: null,
@@ -61,6 +65,21 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
   refreshAccount: async () => {
     const account = await getAuthState();
     set({ account: account.username ? account : null });
+    await get().refreshSkin();
+  },
+
+  refreshSkin: async () => {
+    const account = get().account;
+    if (!account) {
+      set({ skinUrl: null });
+      return;
+    }
+    try {
+      const skin = await getPlayerSkin(account.uuid);
+      set({ skinUrl: skin.url });
+    } catch {
+      set({ skinUrl: null });
+    }
   },
 
   beginMsLogin: async () => {
@@ -84,6 +103,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
         device.expires_in,
       );
       set({ account, msStatus: "idle", msDevice: null });
+      await get().refreshSkin();
     } catch (error) {
       set({ msStatus: "error", msError: String(error) });
     }
@@ -95,7 +115,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
 
   logout: async () => {
     await tauriLogout();
-    set({ account: null });
+    set({ account: null, skinUrl: null });
   },
 
   startDownload: async () => {
