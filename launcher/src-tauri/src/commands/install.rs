@@ -277,8 +277,10 @@ fn hex_sha1(bytes: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-// Télécharge avec vérification sha1. Si le fichier existe mais que le hash ne
-// correspond pas (téléchargement corrompu/interrompu), il est re-téléchargé.
+// Télécharge avec vérification sha1. Un fichier corrompu ou un transfert partiel
+// (réseau instable) déclenche jusqu'à MAX_RETRIES nouvelles tentatives.
+const MAX_DOWNLOAD_RETRIES: u32 = 3;
+
 async fn download_verified(
     client: &reqwest::Client,
     url: &str,
@@ -295,17 +297,27 @@ async fn download_verified(
         }
         let _ = tokio::fs::remove_file(dest).await;
     }
-    download_file(client, url, dest).await?;
-    if let Some(expected) = expected_sha1 {
-        if file_sha1(dest).as_deref() != Some(expected) {
-            let _ = tokio::fs::remove_file(dest).await;
-            return Err(format!(
-                "Intégrité invalide pour {} (sha1 attendu {expected}).",
-                dest.display()
-            ));
+
+    for attempt in 0..MAX_DOWNLOAD_RETRIES {
+        download_file(client, url, dest).await?;
+        if let Some(expected) = expected_sha1 {
+            if file_sha1(dest).as_deref() == Some(expected) {
+                return Ok(());
+            }
+        } else {
+            return Ok(());
+        }
+        let _ = tokio::fs::remove_file(dest).await;
+        if attempt + 1 < MAX_DOWNLOAD_RETRIES {
+            tokio::time::sleep(Duration::from_secs(2 * (attempt + 1) as u64)).await;
         }
     }
-    Ok(())
+
+    Err(format!(
+        "Intégrité invalide après {MAX_DOWNLOAD_RETRIES} tentatives pour {} (sha1 attendu {}).",
+        dest.display(),
+        expected_sha1.unwrap_or("?"),
+    ))
 }
 
 // Extrait une archive natives (zip) dans dest. L'archive native est marquée par
