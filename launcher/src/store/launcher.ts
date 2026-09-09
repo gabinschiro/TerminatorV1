@@ -2,12 +2,14 @@ import { create } from "zustand";
 import {
   getSystemInfo,
   getAuthState,
-  loginMicrosoft,
+  beginMsLogin,
+  completeMsLogin,
   logout as tauriLogout,
   downloadAssets,
   onDownloadProgress,
   type SystemInfo,
   type Account,
+  type DeviceCodeInfo,
   type DownloadProgress,
 } from "@/lib/tauri";
 
@@ -16,15 +18,22 @@ interface DownloadState {
   progress: DownloadProgress | null;
 }
 
+export type MsLoginStatus = "idle" | "awaiting_device" | "polling" | "error";
+
 interface LauncherState extends DownloadState {
   system: SystemInfo | null;
   version: string;
   ramMb: number;
   account: Account | null;
   loadingSystem: boolean;
+  msStatus: MsLoginStatus;
+  msDevice: DeviceCodeInfo | null;
+  msError: string | null;
   refreshSystem: () => Promise<void>;
   refreshAccount: () => Promise<void>;
-  login: (deviceCode: string) => Promise<void>;
+  beginMsLogin: () => Promise<void>;
+  completeMsLogin: () => Promise<void>;
+  cancelMsLogin: () => void;
   logout: () => Promise<void>;
   startDownload: () => Promise<void>;
   setVersion: (version: string) => void;
@@ -37,6 +46,9 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
   ramMb: 4096,
   account: null,
   loadingSystem: false,
+  msStatus: "idle",
+  msDevice: null,
+  msError: null,
   active: false,
   progress: null,
 
@@ -51,9 +63,34 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
     set({ account: account.username ? account : null });
   },
 
-  login: async (deviceCode) => {
-    const account = await loginMicrosoft(deviceCode);
-    set({ account });
+  beginMsLogin: async () => {
+    set({ msStatus: "awaiting_device", msError: null });
+    try {
+      const device = await beginMsLogin();
+      set({ msDevice: device });
+    } catch (error) {
+      set({ msStatus: "error", msError: String(error) });
+    }
+  },
+
+  completeMsLogin: async () => {
+    const device = get().msDevice;
+    if (!device) return;
+    set({ msStatus: "polling", msError: null });
+    try {
+      const account = await completeMsLogin(
+        device.device_code,
+        device.interval,
+        device.expires_in,
+      );
+      set({ account, msStatus: "idle", msDevice: null });
+    } catch (error) {
+      set({ msStatus: "error", msError: String(error) });
+    }
+  },
+
+  cancelMsLogin: () => {
+    set({ msStatus: "idle", msDevice: null, msError: null });
   },
 
   logout: async () => {

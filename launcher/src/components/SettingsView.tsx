@@ -1,12 +1,13 @@
 import { motion } from "framer-motion";
 import { useLauncherStore } from "@/store/launcher";
 import { GlassPanel } from "@/components/ui/GlassPanel";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 const RAM_OPTIONS = [2048, 3072, 4096, 6144, 8192, 12288] as const;
 const VERSION_OPTIONS = ["1.21.4", "1.21.1", "1.20.6"] as const;
 
 export function SettingsView() {
-  const { ramMb, setRam, version, setVersion, account, login, logout } =
+  const { ramMb, setRam, version, setVersion, account, logout } =
     useLauncherStore();
 
   return (
@@ -64,55 +65,103 @@ export function SettingsView() {
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-text-muted">
           Compte
         </h2>
-        {account ? (
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">{account.username}</p>
-              <p className="text-xs text-text-muted">{account.uuid}</p>
-            </div>
-            <button
-              onClick={logout}
-              className="rounded-xl bg-surface-2 px-4 py-2 text-sm font-medium hover:bg-white/10"
-            >
-              Se déconnecter
-            </button>
-          </div>
-        ) : (
-          <LoginForm onLogin={login} />
-        )}
+        {account ? <AccountPanel account={account} onLogout={logout} /> : <LoginPanel />}
       </GlassPanel>
     </motion.div>
   );
 }
 
-function LoginForm({ onLogin }: { onLogin: (code: string) => Promise<void> }) {
+function AccountPanel({
+  account,
+  onLogout,
+}: {
+  account: { username: string; uuid: string };
+  onLogout: () => Promise<void>;
+}) {
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm text-text-muted">
-        Entrez votre code de vérification Microsoft pour vous connecter.
-      </p>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const input = e.currentTarget.elements.namedItem(
-            "deviceCode",
-          ) as HTMLInputElement;
-          onLogin(input.value);
-        }}
-        className="flex gap-2"
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="font-medium">{account.username}</p>
+        <p className="text-xs text-text-muted">{account.uuid}</p>
+      </div>
+      <button
+        onClick={onLogout}
+        className="rounded-xl bg-surface-2 px-4 py-2 text-sm font-medium hover:bg-white/10"
       >
-        <input
-          name="deviceCode"
-          placeholder="Code de vérification"
-          className="flex-1 rounded-xl border border-border bg-surface-2 px-4 py-2 text-sm outline-none focus:border-accent"
-        />
+        Se déconnecter
+      </button>
+    </div>
+  );
+}
+
+function LoginPanel() {
+  const { msStatus, msDevice, msError, beginMsLogin, completeMsLogin, cancelMsLogin } =
+    useLauncherStore();
+  const polling = msStatus === "polling";
+  const showingCode = msDevice !== null;
+
+  if (!showingCode) {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-text-muted">
+          Connectez votre compte Microsoft pour jouer en ligne.{" "}
+          {msStatus === "error" && msError && (
+            <span className="mt-1 block text-red-400">{msError}</span>
+          )}
+        </p>
         <button
-          type="submit"
+          onClick={beginMsLogin}
+          className="w-fit rounded-xl bg-accent px-5 py-2 text-sm font-semibold text-white"
+        >
+          Se connecter avec Microsoft
+        </button>
+      </div>
+    );
+  }
+
+  if (!msDevice) return null;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-text-muted">
+        Ouvrez le lien ci-dessous puis entrez ce code pour valider la connexion.
+      </p>
+
+      <div className="rounded-2xl border border-border bg-bg px-6 py-5 text-center">
+        <p className="text-xs uppercase tracking-wide text-text-muted">
+          Votre code
+        </p>
+        <p className="mt-1 font-mono text-4xl font-bold tracking-[0.3em] text-accent-soft">
+          {msDevice.user_code}
+        </p>
+      </div>
+
+      {msError && msStatus === "error" && (
+        <p className="text-sm text-red-400">{msError}</p>
+      )}
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => openUrl(msDevice.verification_uri)}
           className="rounded-xl bg-accent px-5 py-2 text-sm font-semibold text-white"
         >
-          Connecter
+          Ouvrir le navigateur
         </button>
-      </form>
+        <button
+          onClick={completeMsLogin}
+          disabled={polling}
+          className="rounded-xl bg-surface-2 px-4 py-2 text-sm font-medium hover:bg-white/10 disabled:opacity-60"
+        >
+          {polling ? "En attente de validation..." : "J'ai validé, continuer"}
+        </button>
+        <button
+          onClick={cancelMsLogin}
+          disabled={polling}
+          className="ml-auto text-sm text-text-muted hover:underline disabled:opacity-60"
+        >
+          Annuler
+        </button>
+      </div>
     </div>
   );
 }

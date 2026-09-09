@@ -27,6 +27,14 @@ export interface Account {
   uuid: string;
 }
 
+export interface DeviceCodeInfo {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+}
+
 export interface DownloadProgress {
   version: string;
   downloaded_mb: number;
@@ -53,8 +61,20 @@ export function getAuthState(): Promise<Account> {
   return invoke<Account>("get_auth_state");
 }
 
-export function loginMicrosoft(deviceCode: string): Promise<Account> {
-  return invoke<Account>("login_microsoft", { deviceCode });
+export function beginMsLogin(): Promise<DeviceCodeInfo> {
+  return invoke<DeviceCodeInfo>("begin_ms_login");
+}
+
+export function completeMsLogin(
+  deviceCode: string,
+  intervalSecs: number,
+  expiresIn: number,
+): Promise<Account> {
+  return invoke<Account>("complete_ms_login", {
+    deviceCode,
+    intervalSecs,
+    expiresIn,
+  });
 }
 
 export function logout(): Promise<void> {
