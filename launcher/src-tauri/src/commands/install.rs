@@ -65,6 +65,7 @@ struct VersionDownloads {
 #[derive(Deserialize)]
 struct Artifact {
     url: String,
+    sha1: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -155,15 +156,21 @@ fn current_os() -> &'static str {
 }
 
 fn current_arch() -> &'static str {
-    if cfg!(target_arch = "aarch64") {
-        "arm64"
-    } else {
-        "x86"
+    match std::env::consts::ARCH {
+        "x86" => "x86",
+        "x86_64" => "x86_64",
+        "aarch64" => "arm64",
+        other => other,
     }
 }
 
-// Une règle sans clause os/arch s'applique partout ; sinon elle filtre par OS courant.
+// Règles Mojang : pas de règles → inclus. Des règles mais aucune ne matche
+// l'OS/arch courant → exclu (ex: natives macOS sur Linux). Sinon, la dernière
+// règle matcheuse décide.
 fn rules_allow(rules: &[Rule]) -> bool {
+    if rules.is_empty() {
+        return true;
+    }
     let mut allowed = false;
     let mut matched = false;
     for rule in rules {
@@ -180,11 +187,7 @@ fn rules_allow(rules: &[Rule]) -> bool {
             allowed = rule.action == "allow";
         }
     }
-    if matched {
-        allowed
-    } else {
-        true
-    }
+    matched && allowed
 }
 
 // Convertit "net.fabricmc:fabric-loader:0.19.5" ou
@@ -259,6 +262,49 @@ async fn download_file(
     file.write_all(&bytes)
         .await
         .map_err(|e| format!("Écriture impossible : {e}"))?;
+    Ok(())
+}
+
+fn file_sha1(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    Some(hex_sha1(&bytes))
+}
+
+fn hex_sha1(bytes: &[u8]) -> String {
+    use sha1::{Digest as _, Sha1};
+    let mut hasher = Sha1::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+// Télécharge avec vérification sha1. Si le fichier existe mais que le hash ne
+// correspond pas (téléchargement corrompu/interrompu), il est re-téléchargé.
+async fn download_verified(
+    client: &reqwest::Client,
+    url: &str,
+    dest: &PathBuf,
+    expected_sha1: Option<&str>,
+) -> Result<(), String> {
+    if dest.exists() {
+        if let Some(expected) = expected_sha1 {
+            if file_sha1(dest).as_deref() == Some(expected) {
+                return Ok(());
+            }
+        } else {
+            return Ok(());
+        }
+        let _ = tokio::fs::remove_file(dest).await;
+    }
+    download_file(client, url, dest).await?;
+    if let Some(expected) = expected_sha1 {
+        if file_sha1(dest).as_deref() != Some(expected) {
+            let _ = tokio::fs::remove_file(dest).await;
+            return Err(format!(
+                "Intégrité invalide pour {} (sha1 attendu {expected}).",
+                dest.display()
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -362,9 +408,13 @@ pub async fn install_client(app: AppHandle, version: String) -> Result<DownloadP
 
     // 3. Client jar vanilla.
     let client_jar_path = version_dir.join(format!("{version}.jar"));
-    if !client_jar_path.exists() {
-        download_file(&client, &version_json.downloads.client.url, &client_jar_path).await?;
-    }
+    download_verified(
+        &client,
+        &version_json.downloads.client.url,
+        &client_jar_path,
+        version_json.downloads.client.sha1.as_deref(),
+    )
+    .await?;
     progress += STAGE_CLIENT_JAR * 100.0;
     emit_progress(&app, &version, progress);
 
@@ -381,23 +431,11 @@ pub async fn install_client(app: AppHandle, version: String) -> Result<DownloadP
             .and_then(|d| d.artifact.as_ref())
             .ok_or_else(|| format!("Artifact manquant pour {}", lib.name))?;
         let dest = library_local_path(&lib.name);
+        download_verified(&client, &artifact.url, &dest, artifact.sha1.as_deref()).await?;
         if is_native_for_current_os(&lib.name) {
             // Les natives sont des jars (zip) : extraction dans natives/.
-            // Un fichier corrompu issu d'un téléchargement interrompu est re-téléchargé.
-            for attempt in 0..2 {
-                if extract_zip(&dest, &natives_dir).await.is_ok() {
-                    break;
-                }
-                if attempt == 1 {
-                    return Err(format!("Extraction natives impossible pour {}", lib.name));
-                }
-                let _ = tokio::fs::remove_file(&dest).await;
-                download_file(&client, &artifact.url, &dest).await?;
-            }
+            extract_zip(&dest, &natives_dir).await?;
         } else {
-            if !dest.exists() {
-                download_file(&client, &artifact.url, &dest).await?;
-            }
             libs.push(dest);
         }
     }
@@ -492,6 +530,15 @@ mod tests {
     }
 
     #[test]
+    fn maven_path_handles_classifier() {
+        let p = maven_path("org.lwjgl:lwjgl-freetype:3.3.3:natives-linux");
+        assert_eq!(
+            p,
+            PathBuf::from("org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3-natives-linux.jar")
+        );
+    }
+
+    #[test]
     fn rules_allow_defaults_true() {
         assert!(rules_allow(&[]));
     }
@@ -506,5 +553,25 @@ mod tests {
             }),
         }];
         assert!(!rules_allow(&rules));
+    }
+
+    #[test]
+    fn rules_for_other_os_exclude() {
+        // Natives macOS sur Linux : une seule règle allow osx, aucune ne matche → exclu.
+        let rules = vec![Rule {
+            action: "allow".into(),
+            os: Some(OsRule {
+                name: Some(if current_os() == "linux" { "osx" } else { "linux" }.into()),
+                arch: None,
+            }),
+        }];
+        assert!(!rules_allow(&rules));
+    }
+
+    #[test]
+    fn native_for_current_os_detection() {
+        let name = format!("org.lwjgl:lwjgl:3.3.3:natives-{}", current_os());
+        assert!(is_native_for_current_os(&name));
+        assert!(!is_native_for_current_os("org.lwjgl:lwjgl:3.3.3:natives-windows"));
     }
 }

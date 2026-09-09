@@ -8,6 +8,7 @@ const KNOT_CLIENT: &str = "net.fabricmc.loader.impl.launch.knot.KnotClient";
 
 #[derive(Deserialize)]
 struct InstalledVersion {
+    #[serde(rename = "assetIndex")]
     asset_index: AssetIndex,
 }
 
