@@ -113,7 +113,7 @@ struct FabricLibraries {
 #[derive(Deserialize)]
 struct FabricLibrary {
     name: String,
-    url: String,
+    url: Option<String>,
 }
 
 // ---- Asset index ----
@@ -381,24 +381,37 @@ pub async fn install_client(app: AppHandle, version: String) -> Result<DownloadP
             .and_then(|d| d.artifact.as_ref())
             .ok_or_else(|| format!("Artifact manquant pour {}", lib.name))?;
         let dest = library_local_path(&lib.name);
-        if !dest.exists() {
-            download_file(&client, &artifact.url, &dest).await?;
-        }
         if is_native_for_current_os(&lib.name) {
-            // Les natives sont livrées en zip : extraction dans natives/ (cf. dossier lancé).
-            extract_zip(&dest, &natives_dir).await?;
+            // Les natives sont des jars (zip) : extraction dans natives/.
+            // Un fichier corrompu issu d'un téléchargement interrompu est re-téléchargé.
+            for attempt in 0..2 {
+                if extract_zip(&dest, &natives_dir).await.is_ok() {
+                    break;
+                }
+                if attempt == 1 {
+                    return Err(format!("Extraction natives impossible pour {}", lib.name));
+                }
+                let _ = tokio::fs::remove_file(&dest).await;
+                download_file(&client, &artifact.url, &dest).await?;
+            }
         } else {
+            if !dest.exists() {
+                download_file(&client, &artifact.url, &dest).await?;
+            }
             libs.push(dest);
         }
     }
     progress += STAGE_LIBS * 100.0;
     emit_progress(&app, &version, progress);
 
-    // 5. Libs fabric (loader + intermediary + mappings) via maven.fabricmc.net.
+    // 5. Libs fabric (loader + intermediary + mappings). Sans url explicite,
+    // on retombe sur le maven Mojang (libraries.minecraft.net) pour launchwrapper.
+    const MOJANG_MAVEN: &str = "https://libraries.minecraft.net/";
     for lib in loader.launcher_meta.libraries.common.iter().chain(loader.launcher_meta.libraries.client.iter()) {
         let dest = library_local_path(&lib.name);
         if !dest.exists() {
-            let url = format!("{}{}", lib.url, maven_path(&lib.name).display());
+            let base = lib.url.as_deref().unwrap_or(MOJANG_MAVEN);
+            let url = format!("{base}{}", maven_path(&lib.name).display());
             download_file(&client, &url, &dest).await?;
         }
         libs.push(dest);
