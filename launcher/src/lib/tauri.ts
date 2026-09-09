@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 export interface SystemInfo {
   os_name: string;
@@ -21,11 +22,20 @@ export interface LaunchResponse {
   error: string | null;
 }
 
+export interface Account {
+  username: string;
+  uuid: string;
+}
+
 export interface DownloadProgress {
+  version: string;
   downloaded_mb: number;
   total_mb: number;
   percent: number;
+  done: boolean;
 }
+
+export const DOWNLOAD_PROGRESS_EVENT = "download://progress";
 
 export function getSystemInfo(): Promise<SystemInfo> {
   return invoke<SystemInfo>("get_system_info");
@@ -37,4 +47,24 @@ export function launchGame(request: LaunchRequest): Promise<LaunchResponse> {
 
 export function downloadAssets(version: string): Promise<DownloadProgress> {
   return invoke<DownloadProgress>("download_assets", { version });
+}
+
+export function getAuthState(): Promise<Account> {
+  return invoke<Account>("get_auth_state");
+}
+
+export function loginMicrosoft(deviceCode: string): Promise<Account> {
+  return invoke<Account>("login_microsoft", { deviceCode });
+}
+
+export function logout(): Promise<void> {
+  return invoke<void>("logout");
+}
+
+export function onDownloadProgress(
+  handler: (progress: DownloadProgress) => void,
+): Promise<() => void> {
+  return listen<DownloadProgress>(DOWNLOAD_PROGRESS_EVENT, (event) =>
+    handler(event.payload),
+  );
 }
