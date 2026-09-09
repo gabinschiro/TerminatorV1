@@ -5,6 +5,7 @@ import {
   getPlayerSkin,
   beginMsLogin,
   completeMsLogin,
+  refreshMsLogin,
   logout as tauriLogout,
   downloadAssets,
   launchGame,
@@ -69,6 +70,16 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
   },
 
   refreshAccount: async () => {
+    // 1. Tente un refresh silencieux (token expiré) — sans reconnexion utilisateur.
+    // 2. Sinon, restaure la session persistée sur disque.
+    try {
+      const account = await refreshMsLogin();
+      set({ account });
+      await get().refreshSkin();
+      return;
+    } catch {
+      // session absente ou refresh refusé : on retombe sur l'état persisté
+    }
     const account = await getAuthState();
     set({ account: account.username ? account : null });
     await get().refreshSkin();

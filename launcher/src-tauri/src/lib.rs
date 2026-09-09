@@ -16,6 +16,7 @@ pub fn run() {
             commands::auth::logout,
             commands::msauth::begin_ms_login,
             commands::msauth::complete_ms_login,
+            commands::msauth::refresh_ms_login,
             commands::skin::get_player_skin
         ])
         .run(tauri::generate_context!())

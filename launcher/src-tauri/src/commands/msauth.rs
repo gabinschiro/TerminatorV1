@@ -1,4 +1,4 @@
-use crate::commands::auth::{Account, AuthState, MsSession};
+use crate::commands::auth::{save_session, Account, AuthState, MsSession};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -259,6 +259,7 @@ pub async fn complete_ms_login(
                 // Partage l'état de session avec le reste du launcher (get_auth_state, logout).
                 let mut guard = state.0.lock().expect("auth state poisoned");
                 *guard = Some(session);
+                save_session(guard.as_ref().expect("session stored"));
                 return guard
                     .as_ref()
                     .map(|s| s.account.clone())
@@ -266,6 +267,55 @@ pub async fn complete_ms_login(
             }
         }
     }
+}
+
+// Rafraîchit la session via le refresh_token Microsoft, sans repasser par le device flow.
+#[tauri::command]
+pub async fn refresh_ms_login(state: State<'_, AuthState>) -> Result<Account, String> {
+    let client_id = msa_client_id();
+    let client = http_client();
+    let refresh_token = {
+        let guard = state.0.lock().expect("auth state poisoned");
+        guard
+            .as_ref()
+            .map(|s| s.ms_refresh_token.clone())
+            .ok_or_else(|| "Aucune session à rafraîchir.".to_string())?
+    };
+    if refresh_token.is_empty() {
+        return Err("Session sans refresh token, reconnectez-vous.".to_string());
+    }
+
+    let resp = client
+        .post(TOKEN_URL)
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("client_id", client_id.as_str()),
+            ("refresh_token", refresh_token.as_str()),
+            ("scope", SCOPE),
+        ])
+        .send()
+        .await
+        .map_err(|e| format!("Erreur réseau pendant le refresh : {e}"))?;
+
+    let status = resp.status().as_u16();
+    let body = resp.text().await.unwrap_or_default();
+    if status != 200 {
+        return Err(format!(
+            "Le refresh de session a échoué (HTTP {status}). Reconnectez-vous. {body}"
+        ));
+    }
+
+    let refreshed: TokenResponse = serde_json::from_str(&body)
+        .map_err(|e| format!("Réponse de refresh invalide : {e}"))?;
+
+    let session = exchange_tokens(&client, &refreshed)
+        .await
+        .map_err(|e| format!("Ré-authentification Xbox échouée : {e}"))?;
+
+    let mut guard = state.0.lock().expect("auth state poisoned");
+    *guard = Some(session);
+    save_session(guard.as_ref().expect("session stored"));
+    Ok(guard.as_ref().unwrap().account.clone())
 }
 
 async fn exchange_tokens(client: &reqwest::Client, ms_token: &TokenResponse) -> Result<MsSession, String> {

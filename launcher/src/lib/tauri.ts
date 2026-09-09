@@ -84,6 +84,10 @@ export function completeMsLogin(
   });
 }
 
+export function refreshMsLogin(): Promise<Account> {
+  return invoke<Account>("refresh_ms_login");
+}
+
 export function logout(): Promise<void> {
   return invoke<void>("logout");
 }
