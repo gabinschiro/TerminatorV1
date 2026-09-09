@@ -1,8 +1,27 @@
 use crate::commands::auth::AuthState;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::State;
+
+const KNOT_CLIENT: &str = "net.fabricmc.loader.impl.launch.knot.KnotClient";
+
+#[derive(Deserialize)]
+struct InstalledVersion {
+    asset_index: AssetIndex,
+}
+
+#[derive(Deserialize)]
+struct AssetIndex {
+    id: String,
+}
+
+fn read_asset_index_id(version: &str) -> Option<String> {
+    let path = versions_dir().join(version).join(format!("{version}.json"));
+    let content = std::fs::read_to_string(path).ok()?;
+    let parsed: InstalledVersion = serde_json::from_str(&content).ok()?;
+    Some(parsed.asset_index.id)
+}
 
 #[derive(Deserialize)]
 pub struct LaunchRequest {
@@ -25,8 +44,20 @@ fn game_dir() -> PathBuf {
         })
 }
 
-fn client_jar_path(version: &str) -> PathBuf {
-    game_dir().join("client").join(version).join("terminator-client.jar")
+fn versions_dir() -> PathBuf {
+    game_dir().join("versions")
+}
+
+fn libraries_dir() -> PathBuf {
+    game_dir().join("libraries")
+}
+
+fn assets_dir() -> PathBuf {
+    game_dir().join("assets")
+}
+
+fn natives_dir() -> PathBuf {
+    game_dir().join("natives")
 }
 
 fn java_path() -> String {
@@ -48,6 +79,54 @@ fn uuid_dashed(uuid: &str) -> String {
     }
 }
 
+// Classpath = jar du client + toutes les libs installées dans libraries/.
+fn build_classpath(version: &str) -> Result<String, String> {
+    let mut jars: Vec<PathBuf> = Vec::new();
+
+    let client_jar = versions_dir().join(version).join(format!("{version}.jar"));
+    if !client_jar.exists() {
+        return Err(format!(
+            "Le client {version} n'est pas installé. Lancez d'abord l'installation."
+        ));
+    }
+    jars.push(client_jar);
+
+    let libs = libraries_dir();
+    if libs.exists() {
+        let mut found = walk_jar_files(&libs);
+        jars.append(&mut found);
+    }
+
+    if jars.is_empty() {
+        return Err("Aucune librairie installée.".to_string());
+    }
+
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    Ok(jars
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+        .join(sep))
+}
+
+fn walk_jar_files(dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        if let Ok(entries) = std::fs::read_dir(&current) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "jar") {
+                    out.push(path);
+                }
+            }
+        }
+    }
+    out
+}
+
 #[tauri::command]
 pub fn launch_game(state: State<AuthState>, request: LaunchRequest) -> LaunchResponse {
     // La session est lue côté backend : le token ne transite jamais par le frontend.
@@ -62,35 +141,57 @@ pub fn launch_game(state: State<AuthState>, request: LaunchRequest) -> LaunchRes
         }
     };
 
-    let jar = client_jar_path(&request.version);
-    if !jar.exists() {
-        return LaunchResponse {
-            pid: None,
-            error: Some(format!(
-                "Le client {} n'est pas installé. Lancez d'abord le téléchargement.",
-                request.version
-            )),
-        };
-    }
+    let classpath = match build_classpath(&request.version) {
+        Ok(cp) => cp,
+        Err(e) => {
+            return LaunchResponse {
+                pid: None,
+                error: Some(e),
+            }
+        }
+    };
 
-    // La session est injectée dans le processus Java : le client lit ces args
-    // pour authentifier le joueur auprès des serveurs (voir TerminatorClient).
     let game_dir = game_dir();
+    let assets_index_name = read_asset_index_id(&request.version)
+        .ok_or_else(|| "Version non installée ou index d'assets introuvable.".to_string());
+    let assets_index_name = match assets_index_name {
+        Ok(id) => id,
+        Err(e) => {
+            return LaunchResponse {
+                pid: None,
+                error: Some(e),
+            }
+        }
+    };
     let mut cmd = Command::new(java_path());
     cmd.current_dir(&game_dir)
         .arg(format!("-Xmx{}m", request.ram_mb))
-        .arg("-jar")
-        .arg(&jar)
+        .arg(format!("-Djava.library.path={}", natives_dir().display()))
+        .arg("-cp")
+        .arg(&classpath)
+        .arg(KNOT_CLIENT)
+        .arg("--username")
+        .arg(&session.account.username)
+        .arg("--version")
+        .arg(&request.version)
+        .arg("--gameDir")
+        .arg(&game_dir)
+        .arg("--assetsDir")
+        .arg(assets_dir())
+        .arg("--assetIndex")
+        .arg(assets_index_name)
+        .arg("--uuid")
+        .arg(uuid_dashed(&session.account.uuid))
+        .arg("--accessToken")
+        .arg(&session.minecraft_token)
+        .arg("--userType")
+        .arg("msa")
+        .arg("--versionType")
+        .arg("release")
         .arg("--terminator-version")
         .arg(&request.version)
         .arg("--terminator-dir")
-        .arg(&game_dir)
-        .arg("--terminator-username")
-        .arg(&session.account.username)
-        .arg("--terminator-uuid")
-        .arg(uuid_dashed(&session.account.uuid))
-        .arg("--terminator-access-token")
-        .arg(&session.minecraft_token);
+        .arg(&game_dir);
 
     match cmd.spawn() {
         Ok(child) => LaunchResponse {
@@ -124,9 +225,9 @@ mod tests {
 
     #[test]
     fn launch_request_serializes() {
-        let json = r#"{"version":"0.1.0","ram_mb":4096}"#;
+        let json = r#"{"version":"1.21.4","ram_mb":4096}"#;
         let req: LaunchRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.version, "0.1.0");
+        assert_eq!(req.version, "1.21.4");
         assert_eq!(req.ram_mb, 4096);
     }
 }
